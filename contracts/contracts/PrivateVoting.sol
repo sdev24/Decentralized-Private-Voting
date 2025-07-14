@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./VoteVerifier.sol";
 
 contract PrivateVoting is Ownable, ReentrancyGuard {
-    VoteVerifier public immutable verifier;
+    Groth16Verifier public immutable verifier;
     
     struct Candidate {
         uint256 id;
@@ -48,7 +48,7 @@ contract PrivateVoting is Ownable, ReentrancyGuard {
     }
     
     constructor(address _verifier) Ownable(msg.sender) {
-        verifier = VoteVerifier(_verifier);
+        verifier = Groth16Verifier(_verifier);
     }
     
     function addCandidate(string memory _name, string memory _description) external onlyOwner {
@@ -107,7 +107,7 @@ contract PrivateVoting is Ownable, ReentrancyGuard {
     
     function castVote(
         uint256[2] memory _pA,
-        uint256[2] memory _pB,
+        uint256[2][2] memory _pB,
         uint256[2] memory _pC,
         uint256[2] memory _pubSignals // [nullifierHash, candidateId]
     ) external onlyDuringVoting nonReentrant {
@@ -118,12 +118,8 @@ contract PrivateVoting is Ownable, ReentrancyGuard {
         require(candidateId < candidateCount, "Invalid candidate");
         
         // Verify the ZK proof
-        uint256[] memory publicInputs = new uint256[](2);
-        publicInputs[0] = nullifierHash;
-        publicInputs[1] = candidateId;
-        
         require(
-            verifier.verifyProof(_pA, _pB, _pC, publicInputs),
+            verifier.verifyProof(_pA, _pB, _pC, _pubSignals),
             "Invalid proof"
         );
         
