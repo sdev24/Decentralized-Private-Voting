@@ -3,7 +3,7 @@ const { ethers } = require("hardhat");
 const snarkjs = require("snarkjs");
 const path = require("path");
 
-describe("PrivateVoting", function () {
+describe("PrivateVotingNew", function () {
   let verifier, voting, owner, addr1;
 
   beforeEach(async function () {
@@ -19,11 +19,6 @@ describe("PrivateVoting", function () {
     const verifierAddress = await verifier.getAddress();
     voting = await Voting.deploy(verifierAddress);
     await voting.waitForDeployment();
-  });
-
-  it("should deploy the contracts", async function () {
-    expect(await verifier.getAddress()).to.be.a.properAddress;
-    expect(await voting.getAddress()).to.be.a.properAddress;
   });
 
   it("should allow a registered user to cast a valid vote", async function () {
@@ -111,10 +106,11 @@ describe("PrivateVoting", function () {
     const argv = JSON.parse("[" + calldata + "]");
     const [a, b, c, pubSignals_] = argv;
 
-    // 6. Attempt to cast vote with a tampered proof
+    // Tamper with the proof
     const tamperedA = [...a];
-    tamperedA[0] = (BigInt(tamperedA[0]) + 1n).toString(); // Invalidate the proof
+    tamperedA[0] = (BigInt(tamperedA[0]) + 1n).toString();
 
+    // Attempt to cast the vote with the tampered proof
     await expect(voting.connect(addr1).castVote(tamperedA, b, c, pubSignals_)).to.be.revertedWith("Invalid proof");
   });
 });

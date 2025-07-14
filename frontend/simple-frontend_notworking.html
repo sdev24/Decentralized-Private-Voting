@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Private Voting DApp</title>
     <script src="https://cdn.jsdelivr.net/npm/ethers@6.9.0/dist/ethers.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/snarkjs@0.7.1/build/snarkjs.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -108,7 +109,7 @@
     </div>
 
     <script>
-        const CONTRACT_ADDRESS = '0xa224D180757584100aaAE789d4B5d05ac9896588';
+        const CONTRACT_ADDRESS = '0xAf7a5a8F4F8656754e7eadB419B7182cC0AA6De6';
         const CONTRACT_ABI = [
             "function registerVoter(uint256 _commitment) external",
             "function castVote(uint256[2] memory _pA, uint256[2] memory _pB, uint256[2] memory _pC, uint256[2] memory _pubSignals) external",
@@ -292,11 +293,10 @@
 
         async function castVote() {
             if (selectedCandidate === null) return;
-            
             try {
                 console.log('Casting vote for candidate:', selectedCandidate);
                 console.log('User secret:', userSecret);
-                
+
                 // Check if user secret exists
                 if (!userSecret) {
                     // Try to retrieve from localStorage for this address
@@ -306,40 +306,69 @@
                         throw new Error('No voter secret found. Please register first.');
                     }
                 }
-                
-                // For demo - use placeholder proof values
-                const proof = {
-                    a: ["0x1", "0x2"],
-                    b: ["0x3", "0x4"],
-                    c: ["0x5", "0x6"],
-                    publicSignals: [
-                        BigInt(userSecret) * BigInt(userSecret), // nullifier hash
-                        BigInt(selectedCandidate)
-                    ]
+
+                // Prepare inputs for the circuit
+                const nullifier = BigInt('0x' + ethers.keccak256(new TextEncoder().encode(userSecret)).slice(2));
+                const vote = BigInt(selectedCandidate);
+                const commitment = BigInt(userSecret) * BigInt(userSecret); // For demo, match registration
+                const nullifierHash = nullifier * nullifier; // For demo, match circuit logic
+
+                const input = {
+                    secret: BigInt(userSecret),
+                    nullifier: nullifier,
+                    vote: vote,
+                    commitment: commitment,
+                    nullifierHash: nullifierHash
                 };
-                
-                console.log('Proof:', proof);
-                
+
+                // Load wasm and zkey files
+                const wasmUrl = "vote.wasm";
+                const zkeyUrl = "vote_0001.zkey";
+
+                // Generate the proof and public signals
+                const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+                    input,
+                    wasmUrl,
+                    zkeyUrl
+                );
+
+                // Manually construct the arguments for the contract call
+                const a = [proof.pi_a[0], proof.pi_a[1]];
+                const b = [
+                    [proof.pi_b[0][1], proof.pi_b[0][0]],
+                    [proof.pi_b[1][1], proof.pi_b[1][0]]
+                ];
+                const c = [proof.pi_c[0], proof.pi_c[1]];
+                const pubSigs = [publicSignals[0], publicSignals[1]];
+
+                // Convert all arguments to hex strings for Ethers.js
+                const toHex = (n) => '0x' + BigInt(n).toString(16);
+
+                const a_hex = a.map(toHex);
+                const b_hex = b.map(row => row.map(toHex));
+                const c_hex = c.map(toHex);
+                const pubSigs_hex = pubSigs.map(toHex);
+
                 // Check if user is registered
                 const address = await signer.getAddress();
-                const commitment = await contract.voterCommitments(address);
-                if (commitment === 0n) {
+                const commitmentOnChain = await contract.voterCommitments(address);
+                if (commitmentOnChain === 0n) {
                     throw new Error('Not registered to vote');
                 }
-                
+
                 // Check if voting is active
                 const votingActive = await contract.isVotingActive();
                 if (!votingActive) {
                     throw new Error('Voting is not currently active');
                 }
-                
-                const tx = await contract.castVote(proof.a, proof.b, proof.c, proof.publicSignals);
+
+                const tx = await contract.castVote(a_hex, b_hex, c_hex, pubSigs_hex);
                 console.log('Transaction sent:', tx.hash);
                 await tx.wait();
-                
+
                 document.getElementById('status').innerHTML += '<br><span class="success">Vote cast successfully!</span>';
                 document.getElementById('candidatesSection').style.display = 'none';
-                
+
                 setTimeout(checkUserStatus, 2000);
             } catch (error) {
                 console.error('Error casting vote:', error);
@@ -400,7 +429,7 @@
                 resultsDiv.innerHTML = '';
                 
                 // Sort candidates by vote count (descending)
-                const sortedCandidates = contractCandidates.sort((a, b) => 
+                const sortedCandidates = [...contractCandidates].sort((a, b) => 
                     Number(b.voteCount) - Number(a.voteCount)
                 );
                 

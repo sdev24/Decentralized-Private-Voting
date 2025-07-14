@@ -2,9 +2,9 @@ pragma circom 2.0.0;
 
 template VoteCircuit() {
     // Private inputs
-    signal private input secret;
-    signal private input nullifier;
-    signal private input vote; // 0-3 for candidate selection
+    signal input secret;
+    signal input nullifier;
+    signal input vote; // 0-3 for candidate selection
     
     // Public inputs
     signal input commitment; // hash(secret, nullifier)
@@ -39,7 +39,9 @@ template VoteCircuit() {
     nullifierVerify.in[1] <== nullifierHash;
     
     // All checks must pass
-    validVote <== commitmentVerify.out * nullifierVerify.out * voteCheck.out;
+    signal tmp;
+    tmp <== commitmentVerify.out * nullifierVerify.out;
+    validVote <== tmp * voteCheck.out;
     voteOutput <== vote;
 }
 

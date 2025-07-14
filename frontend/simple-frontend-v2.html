@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Private Voting DApp</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        h1, h2 {
+            color: #0056b3;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .candidate-list {
+            margin-top: 20px;
+        }
+        .candidate-item {
+            background-color: #e9ecef;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+        .candidate-item h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .vote-section {
+            margin-top: 20px;
+            border-top: 1px solid #ccc;
+            padding-top: 20px;
+        }
+        .vote-section label {
+            display: block;
+            margin-bottom: 10px;
+        }
+        .vote-section select {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        .results-section {
+            margin-top: 20px;
+            border-top: 1px solid #ccc;
+            padding-top: 20px;
+        }
+        .result-item {
+            background-color: #d4edda;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            color: #155724;
+        }
+        #status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 5px;
+            background-color: #ffeeba;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Private Voting DApp</h1>
+        <p>Connect your MetaMask wallet to interact with the voting contract.</p>
+        <button id="connectWallet">Connect Wallet</button>
+        <p>Connected Account: <span id="account">Not connected</span></p>
+        <div id="status">Loading contract status...</div>
+
+        <div id="activePeriodContent">
+            <h2>Candidates</h2>
+            <div id="candidateList" class="candidate-list">
+                <!-- Candidates will be loaded here -->
+            </div>
+
+            <div class="vote-section">
+                <h2>Register to Vote</h2>
+                <button id="registerVoter">Register as Voter</button>
+                <p>Your Commitment: <span id="commitmentDisplay"></span></p>
+            </div>
+
+            <div class="vote-section">
+                <h2>Cast Your Vote</h2>
+                <label for="candidateSelect">Select Candidate:</label>
+                <select id="candidateSelect"></select>
+                <button id="castVote">Cast Vote</button>
+            </div>
+        </div>
+
+        <div id="resultsSection" class="results-section" style="display: none;">
+            <h2>Voting Results</h2>
+            <div id="resultsList">
+                <!-- Results will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.ethers.io/lib/ethers-5.7.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/snarkjs@0.7.0/build/snarkjs.min.js"></script>
+    <script>
+        const CONTRACT_ADDRESS = '0xAf7a5a8F4F8656754e7eadB419B7182cC0AA6De6'; // Replace with your deployed contract address
+        const CONTRACT_ABI = [
+            "function registerVoter(uint256 _commitment) external",
+            "function castVote(uint256[2] memory _pA, uint256[2] memory _pB, uint256[2] memory _pC, uint256[2] memory _pubSignals) external",
+            "function addCandidate(string memory _name, string memory _description) external",
+            "function getCandidate(uint256 _candidateId) view returns (string memory name, string memory description, uint256 voteCount)",
+            "function getCandidatesCount() view returns (uint256)",
+            "function registrationActive() view returns (bool)",
+            "function votingActive() view returns (bool)",
+            "function setVotingPeriod(uint256 _registrationStart, uint256 _registrationEnd, uint256 _votingStart, uint256 _votingEnd) external",
+            "function voterCommitments(address) view returns (uint256)",
+            "function usedNullifiers(uint256) view returns (bool)"
+        ];
+
+        let provider;
+        let signer;
+        let contract;
+        let currentAccount;
+
+        const connectWalletBtn = document.getElementById('connectWallet');
+        const accountSpan = document.getElementById('account');
+        const statusDiv = document.getElementById('status');
+        const registerVoterBtn = document.getElementById('registerVoter');
+        const commitmentDisplay = document.getElementById('commitmentDisplay');
+        const candidateListDiv = document.getElementById('candidateList');
+        const candidateSelect = document.getElementById('candidateSelect');
+        const castVoteBtn = document.getElementById('castVote');
+        const activePeriodContent = document.getElementById('activePeriodContent');
+        const resultsSection = document.getElementById('resultsSection');
+        const resultsList = document.getElementById('resultsList');
+
+        connectWalletBtn.addEventListener('click', async () => {
+            if (window.ethereum) {
+                try {
+                    await window.ethereum.request({ method: 'eth_requestAccounts' });
+                    provider = new ethers.providers.Web3Provider(window.ethereum);
+                    signer = provider.getSigner();
+                    currentAccount = await signer.getAddress();
+                    accountSpan.textContent = currentAccount;
+                    contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+                    await updateUI();
+                } catch (error) {
+                    console.error("Error connecting to MetaMask:", error);
+                    statusDiv.textContent = "Error connecting to MetaMask. Please ensure it's installed and unlocked.";
+                }
+            } else {
+                statusDiv.textContent = "MetaMask is not installed. Please install it to use this DApp.";
+            }
+        });
+
+        registerVoterBtn.addEventListener('click', async () => {
+            if (!contract) {
+                statusDiv.textContent = "Please connect your wallet first.";
+                return;
+            }
+            try {
+                statusDiv.textContent = "Registering voter...";
+                const secret = ethers.utils.randomBytes(32); 
+                const secretHex = ethers.utils.hexlify(secret);
+                localStorage.setItem('userSecret', secretHex);
+
+                const commitment = ethers.BigNumber.from(ethers.utils.keccak256(secret));
+                localStorage.setItem('userCommitment', commitment.toString());
+                
+                const tx = await contract.registerVoter(commitment);
+                await tx.wait();
+                commitmentDisplay.textContent = commitment.toString();
+                statusDiv.textContent = "Voter registered successfully!";
+                await updateUI();
+            } catch (error) {
+                console.error("Error registering voter:", error);
+                statusDiv.textContent = `Error registering voter: ${error.message}`;
+            }
+        });
+
+        castVoteBtn.addEventListener('click', async () => {
+            if (!contract) {
+                statusDiv.textContent = "Please connect your wallet first.";
+                return;
+            }
+            const selectedCandidateId = candidateSelect.value;
+            if (!selectedCandidateId) {
+                statusDiv.textContent = "Please select a candidate.";
+                return;
+            }
+
+            try {
+                statusDiv.textContent = "Generating ZK proof and casting vote...";
+
+                const storedSecretHex = localStorage.getItem('userSecret');
+                const storedCommitment = localStorage.getItem('userCommitment');
+
+                if (!storedSecretHex || !storedCommitment) {
+                    statusDiv.textContent = "Error: User secret or commitment not found. Please register first.";
+                    return;
+                }
+
+                const secretBytes = ethers.utils.arrayify(storedSecretHex);
+                const secretBigInt = BigInt('0x' + ethers.utils.keccak256(secretBytes).slice(2));
+                const commitmentBigInt = BigInt(storedCommitment);
+
+                const nullifier = BigInt('0x' + ethers.utils.keccak256(secretBytes).slice(2)); // Using secret hash as nullifier for simplicity
+
+                const input = {
+                    secret: secretBigInt,
+                    nullifier: nullifier,
+                    vote: parseInt(selectedCandidateId),
+                    commitment: commitmentBigInt,
+                    nullifierHash: nullifier * nullifier
+                };
+
+                const wasmPath = './vote.wasm';
+                const zkeyPath = './vote_0001.zkey';
+
+                const { proof, publicSignals } = await snarkjs.groth16.fullProve(input, wasmPath, zkeyPath);
+                const calldata = await snarkjs.groth16.exportSolidityCallData(proof, publicSignals);
+                const argv = JSON.parse("[" + calldata + "]");
+                const [a, b, c, pubSignals_] = argv;
+
+                const tx = await contract.castVote(a, b, c, pubSignals_);
+                await tx.wait();
+                statusDiv.textContent = "Vote cast successfully!";
+                await updateUI();
+            } catch (error) {
+                console.error("Error casting vote:", error);
+                statusDiv.textContent = `Error casting vote: ${error.message}`;
+            }
+        });
+
+        async function updateUI() {
+            if (!contract) return;
+
+            const registrationActive = await contract.registrationActive();
+            const votingActive = await contract.votingActive();
+
+            candidateListDiv.innerHTML = '';
+            candidateSelect.innerHTML = '';
+
+            if (registrationActive || votingActive) {
+                activePeriodContent.style.display = 'block';
+                resultsSection.style.display = 'none';
+                statusDiv.textContent = registrationActive ? "Registration period is active." : "Voting period is active.";
+
+                const candidatesCount = await contract.getCandidatesCount();
+                for (let i = 0; i < candidatesCount; i++) {
+                    const [name, description, voteCount] = await contract.getCandidate(i);
+                    const candidateItem = document.createElement('div');
+                    candidateItem.className = 'candidate-item';
+                    candidateItem.innerHTML = `<h3>${name} (ID: ${i})</h3><p>${description}</p>`;
+                    candidateListDiv.appendChild(candidateItem);
+
+                    const option = document.createElement('option');
+                    option.value = i;
+                    option.textContent = `${name} (ID: ${i})`;
+                    candidateSelect.appendChild(option);
+                }
+
+                const voterCommitment = await contract.voterCommitments(currentAccount);
+                if (voterCommitment.gt(0)) {
+                    commitmentDisplay.textContent = voterCommitment.toString();
+                    registerVoterBtn.disabled = true;
+                    statusDiv.textContent += " You are registered.";
+                } else {
+                    commitmentDisplay.textContent = "Not registered";
+                    registerVoterBtn.disabled = false;
+                }
+
+                if (votingActive && voterCommitment.gt(0)) {
+                    castVoteBtn.disabled = false;
+                } else {
+                    castVoteBtn.disabled = true;
+                }
+
+            } else {
+                activePeriodContent.style.display = 'none';
+                resultsSection.style.display = 'block';
+                statusDiv.textContent = "Voting period has ended. Displaying results.";
+                await displayResults();
+            }
+        }
+
+        async function displayResults() {
+            resultsList.innerHTML = '';
+            try {
+                const candidatesCount = await contract.getCandidatesCount();
+                for (let i = 0; i < candidatesCount; i++) {
+                    const [name, description, voteCount] = await contract.getCandidate(i);
+                    const resultItem = document.createElement('div');
+                    resultItem.className = 'result-item';
+                    resultItem.innerHTML = `<h3>${name}</h3><p>Votes: ${voteCount.toString()}</p>`;
+                    resultsList.appendChild(resultItem);
+                }
+            } catch (error) {
+                console.error("Error fetching results:", error);
+                resultsList.innerHTML = `<p>Error loading results: ${error.message}</p>`;
+            }
+        }
+
+        window.addEventListener('load', async () => {
+            if (window.ethereum) {
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                const accounts = await provider.listAccounts();
+                if (accounts.length > 0) {
+                    signer = provider.getSigner();
+                    currentAccount = accounts[0];
+                    accountSpan.textContent = currentAccount;
+                    contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+                    await updateUI();
+                } else {
+                    statusDiv.textContent = "Please connect your wallet.";
+                }
+            } else {
+                statusDiv.textContent = "MetaMask is not installed. Please install it to use this DApp.";
+            }
+        });
+    </script>
+</body>
+</html>

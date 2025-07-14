@@ -6,18 +6,36 @@ A decentralized voting application with zero-knowledge privacy built on Arbitrum
 
 - **Private Voting**: Uses zero-knowledge proofs to ensure vote privacy
 - **Wallet Integration**: Connect with MetaMask or other Web3 wallets
-- **Configurable Candidates**: Easy candidate management via JSON configuration
+- **On-Chain Candidates**: Candidate management is handled directly in the smart contract.
 - **Anti-Double Voting**: Cryptographic nullifiers prevent multiple votes
 - **Real-time Results**: Live vote tallying with privacy preservation
 
 ## Architecture
 
 ```
-├── circuits/          # Circom ZK circuits for vote privacy
-├── contracts/         # Solidity smart contracts
-├── frontend/          # React TypeScript frontend
-├── config/           # Candidate configuration
-└── scripts/          # Deployment and setup scripts
+├── circuits/          # Circom ZK circuits and artifacts for vote privacy
+├── contracts/         # Solidity smart contracts, deployment scripts, and tests
+├── frontend/          # A simple HTML frontend for interacting with the contract
+```
+
+### System Architecture Diagram
+
+```mermaid
+graph TD
+  User["User (Voter)"]
+  Browser["Simple HTML Frontend (Browser)"]
+  Wallet["Web3 Wallet (MetaMask)"]
+  SmartContract["PrivateVoting Smart Contract (Arbitrum)"]
+  Verifier["VoteVerifier Contract"]
+  Circuits["ZK Circuits (circom)"]
+
+  User -- interacts --> Browser
+  Browser -- connects --> Wallet
+  Browser -- calls --> SmartContract
+  SmartContract -- verifies ZK proof --> Verifier
+  Browser -- generates ZK proof using --> Circuits
+  SmartContract -- stores commitments, votes --> SmartContract
+  SmartContract -- provides results --> Browser
 ```
 
 ## Privacy Model
@@ -36,24 +54,26 @@ cd circuits && npm install
 
 # Install contract dependencies  
 cd ../contracts && npm install
-
-# Install frontend dependencies
-cd ../frontend && npm install
 ```
 
 ### 2. Setup ZK Circuits
 
+This step is only necessary if you want to re-generate the circuit artifacts. The necessary files (`vote.wasm`, `vote_0001.zkey`, and `VoteVerifier.sol`) are already included in the repository.
+
 ```bash
 cd circuits
-chmod +x setup.sh
-./setup.sh
+# This script will compile the circuit and generate the proving and verification keys.
+# It will also generate the VoteVerifier.sol contract.
+./setup.sh 
 ```
 
 ### 3. Configure Environment
 
-```bash
-cp .env.example .env
-# Edit .env with your settings
+Create a `.env` file in the root of the project and add the following:
+
+```
+ARBITRUM_RPC_URL="YOUR_ARBITRUM_RPC_URL"
+PRIVATE_KEY="YOUR_PRIVATE_KEY"
 ```
 
 ### 4. Deploy Contracts
@@ -63,55 +83,27 @@ cd contracts
 npm run deploy
 ```
 
-### 5. Start Frontend
+This will deploy the `PrivateVoting` and `VoteVerifier` contracts to the Arbitrum network. The deployment script will also add four candidates and set the voting periods.
+
+### 5. Configure and Run the Frontend
+
+1.  After deploying the contracts, the `contracts` directory will contain a `deployment.json` file. Copy the address of the `voting` contract from this file.
+2.  Open the `frontend/simple-frontend.html` file and replace the placeholder `CONTRACT_ADDRESS` with the address you copied.
+3.  Copy the `vote.wasm` and `vote_0001.zkey` files from the `circuits` directory to the `frontend` directory.
+4.  Serve the `frontend` directory with a simple web server:
 
 ```bash
 cd frontend
-npm start
+python3 -m http.server 3050
 ```
-
-## Configuration
-
-### Candidates
-
-Edit `config/candidates.json` to configure voting candidates:
-
-```json
-{
-  "candidates": [
-    {
-      "id": 0,
-      "name": "Candidate Name",
-      "description": "Candidate description"
-    }
-  ]
-}
-```
-
-### Network Configuration
-
-The app is configured for Arbitrum mainnet and Sepolia testnet. Update `contracts/hardhat.config.js` for different networks.
 
 ## Usage
 
-1. **Connect Wallet**: Click "Connect Wallet" to connect MetaMask
-2. **Register**: Generate a secret commitment to register as a voter
-3. **Vote**: Select a candidate and cast your private vote
-4. **Results**: View real-time vote tallies
-
-## Privacy Features
-
-- **Commitment-Nullifier Scheme**: Prevents vote linkability
-- **Zero-Knowledge Proofs**: Prove eligibility without revealing identity
-- **Cryptographic Nullifiers**: Prevent double voting
-- **On-chain Privacy**: Vote choices never stored on blockchain
-
-## Security Considerations
-
-- Keep your voter secret safe and private
-- Use a proper Powers of Tau ceremony for production
-- Audit smart contracts before mainnet deployment
-- Consider using a relayer for maximum privacy
+1.  Open `http://localhost:3050/simple-frontend.html` in a browser with MetaMask installed.
+2.  **Connect Wallet**: Click "Connect Wallet" to connect MetaMask to the Arbitrum network.
+3.  **Register**: If the registration period is active, you'll see a "Register to Vote" button. Click it to generate a secret and register your commitment on the blockchain.
+4.  **Vote**: If the voting period is active, you'll be able to select a candidate and cast your vote. This will generate a ZK proof in your browser.
+5.  **Results**: After the voting period ends, the results will be displayed.
 
 ## Development
 
@@ -122,24 +114,7 @@ cd contracts
 npm test
 ```
 
-### Compiling Circuits
-
-```bash
-cd circuits
-npm run compile
-```
-
-### Local Development
-
-For local development, use a local blockchain like Hardhat Network or Ganache.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
+This will run the test suite, which includes tests for ZKP generation and verification.
 
 ## License
 

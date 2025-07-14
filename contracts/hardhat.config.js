@@ -17,7 +17,7 @@ module.exports = {
     },
     arbitrum: {
       url: process.env.ARBITRUM_RPC_URL || "https://arb1.arbitrum.io/rpc",
-      // accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
       chainId: 42161,
       gasPrice: 1000000000
     },
