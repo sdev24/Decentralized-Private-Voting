@@ -1,0 +1,21 @@
+{
+  "name": "decentralized-voting-app",
+  "version": "1.0.0",
+  "description": "Privacy-preserving decentralized voting application",
+  "main": "index.js",
+  "scripts": {
+    "compile-circuits": "cd circuits && circom vote.circom --r1cs --wasm --sym",
+    "setup-zk": "cd circuits && snarkjs powersoftau new bn128 12 pot12_0000.ptau",
+    "compile-contracts": "cd contracts && npx hardhat compile",
+    "deploy": "cd contracts && npx hardhat run scripts/deploy.js --network arbitrum",
+    "dev": "cd frontend && npm run dev",
+    "test": "cd contracts && npx hardhat test"
+  },
+  "keywords": ["voting", "blockchain", "privacy", "zk-snarks", "arbitrum"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "circom": "^2.1.6",
+    "snarkjs": "^0.7.0"
+  }
+}
