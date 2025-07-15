@@ -25,45 +25,48 @@ This system enables private and secure voting using a combination of smart contr
 
 Because the ZK proof is not linked to the voter's original commitment, the vote remains anonymous.
 
-## System Architecture Diagram
-
-```mermaid
-graph TD
-  User["User (Voter)"]
-  Browser["Simple HTML Frontend (Browser)"]
-  Wallet["Web3 Wallet (MetaMask)"]
-  SmartContract["PrivateVoting Smart Contract (Arbitrum)"]
-  Verifier["VoteVerifier Contract"]
-  Circuits["ZK Circuits (circom)"]
-
-  User -- interacts --> Browser
-  Browser -- connects --> Wallet
-  Browser -- calls --> SmartContract
-  SmartContract -- verifies ZK proof --> Verifier
-  Browser -- generates ZK proof using --> Circuits
-  SmartContract -- stores commitments, votes --> SmartContract
-  SmartContract -- provides results --> Browser
-```
-
 ## Sequence Diagram
 
 ```mermaid
 sequenceDiagram
-    participant U as User
-    participant F as Frontend (GitHub Pages)
-    participant W as Wallet (MetaMask)
-    participant C as Smart Contract
+    participant Deployer
+    participant Voter
+    participant Frontend
+    participant Wallet
+    participant PrivateVotingContract
+    participant VerifierContract
 
-    U->>F: Open DApp in browser
-    U->>F: Click "Connect Wallet"
-    F->>W: Request account access
-    W-->>F: Return account address
-    U->>F: Register/Vote
-    F->>W: Sign & send transaction
-    W->>C: Submit transaction (register/vote)
-    C-->>W: Transaction receipt
-    W-->>F: Transaction result
-    F-->>U: Show status/result
+    Deployer->>PrivateVotingContract: Deploy and Configure (Add Candidates, Set Periods)
+    
+    loop Registration Period
+        Voter->>Frontend: Connect Wallet
+        Frontend->>Wallet: Request Account Access
+        Wallet-->>Frontend: Return Address
+        Frontend->>Voter: Generate Secret & Commitment
+        Voter->>Frontend: Click "Register"
+        Frontend->>PrivateVotingContract: registerVoter(commitment)
+        PrivateVotingContract-->>Frontend: VoterRegistered Event
+    end
+
+    loop Voting Period
+        Voter->>Frontend: Select Candidate
+        Frontend->>Frontend: Generate ZK Proof (with secret, nullifier, vote)
+        Frontend->>PrivateVotingContract: castVote(proof, publicSignals)
+        PrivateVotingContract->>VerifierContract: verifyProof(proof, publicSignals)
+        VerifierContract-->>PrivateVotingContract: Return Verification Result (true/false)
+        alt Proof is Valid
+            PrivateVotingContract->>PrivateVotingContract: Record Vote, Store Nullifier
+            PrivateVotingContract-->>Frontend: VoteCast Event
+        else Proof is Invalid
+            PrivateVotingContract-->>Frontend: Revert Transaction
+        end
+    end
+
+    loop After Voting Period
+        Frontend->>PrivateVotingContract: getResults()
+        PrivateVotingContract-->>Frontend: Return Vote Counts
+        Frontend->>Voter: Display Final Results
+    end
 ```
 
 ## Deployer Steps
@@ -120,20 +123,13 @@ cd circuits
 
 ### 3. Configure and Run the Frontend
 
-For local testing, serve the `frontend` directory with a simple web server:
+1.  Serve the `frontend` directory with a simple web server:
 
 ```bash
 cd frontend
 python3 -m http.server 3050
 ```
-For deployment,** host the frontend so users can access it over the internet.**  
-The recommended way is to use [GitHub Pages](https://pages.github.com/) or any static file host (e.g., Vercel, Netlify, S3, etc).
 
-- If using GitHub Pages, place your `index.html`, `vote.wasm`, and `vote_0001.zkey` in the root or `/docs` folder.
-- Set the GitHub Pages source to `/ (root)` or `/docs` in your repository settings.
-- Your users will then be able to access the DApp at  
-  `https://<your-username>.github.io/<repo-name>/`
-  
 ## Usage
 
 1.  Open `http://localhost:3050/simple-frontend.html` in a browser with MetaMask installed.
@@ -152,6 +148,10 @@ npm test
 ```
 
 This will run the test suite, which includes tests for ZKP generation and verification.
+
+## License
+
+MIT License - see LICENSE file for details.
 
 ## Disclaimer
 
