@@ -2,47 +2,101 @@
 
 A decentralized voting application with zero-knowledge privacy built on Arbitrum.
 
-## Features
+## How It Works
 
-- **Private Voting**: Uses zero-knowledge proofs to ensure vote privacy
-- **Wallet Integration**: Connect with MetaMask or other Web3 wallets
-- **On-Chain Candidates**: Candidate management is handled directly in the smart contract.
-- **Anti-Double Voting**: Cryptographic nullifiers prevent multiple votes
-- **Real-time Results**: Live vote tallying with privacy preservation
+This system enables private and secure voting using a combination of smart contracts and zero-knowledge proofs (ZKPs). The process is divided into distinct phases to ensure that no one can link a voter's identity to their vote.
 
-## Architecture
+1.  **Setup (Tau Ceremony)**: Before any voting can happen, a trusted setup ceremony (often called a Powers of Tau ceremony) must be performed for the ZK-SNARK circuit. This is a critical security step. Multiple participants contribute randomness to generate a set of public parameters. The security of the entire system relies on at least one participant in this ceremony being honest and discarding their random input (the "toxic waste"). The more participants, the stronger the security guarantee.
 
-```
-├── circuits/          # Circom ZK circuits and artifacts for vote privacy
-├── contracts/         # Solidity smart contracts, deployment scripts, and tests
-├── frontend/          # A simple HTML frontend for interacting with the contract
-```
+2.  **Deployment**: The contract deployer is responsible for setting up the election. This involves:
+    *   Deploying the `VoteVerifier.sol` contract, which is generated during the circuit setup.
+    *   Deploying the main `PrivateVoting.sol` contract, linking it to the verifier.
+    *   Adding the official candidates for the election.
+    *   Setting the start and end times for both the registration and voting periods.
 
-### System Architecture Diagram
+3.  **Registration**: Voters connect their wallets and register to vote. During registration, the frontend generates a unique, secret value for the voter. It then calculates a "commitment" from this secret and sends it to the smart contract. The contract stores this commitment, marking the voter as eligible without knowing their secret.
+
+4.  **Voting**: When a voter casts their ballot, the following happens in their browser:
+    *   A ZK proof is generated. This proof mathematically confirms two things:
+        1.  The voter knows the secret corresponding to a registered commitment.
+        2.  The voter has not voted before (enforced by a "nullifier").
+    *   The proof is sent to the `PrivateVoting` smart contract along with the chosen candidate ID.
+    *   The contract uses the `VoteVerifier` to validate the ZK proof. If the proof is valid, the vote is counted.
+
+Because the ZK proof is not linked to the voter's original commitment, the vote remains anonymous.
+
+## Sequence Diagram
 
 ```mermaid
-graph TD
-  User["User (Voter)"]
-  Browser["Simple HTML Frontend (Browser)"]
-  Wallet["Web3 Wallet (MetaMask)"]
-  SmartContract["PrivateVoting Smart Contract (Arbitrum)"]
-  Verifier["VoteVerifier Contract"]
-  Circuits["ZK Circuits (circom)"]
+sequenceDiagram
+    participant Deployer
+    participant Voter
+    participant Frontend
+    participant Wallet
+    participant PrivateVotingContract
+    participant VerifierContract
 
-  User -- interacts --> Browser
-  Browser -- connects --> Wallet
-  Browser -- calls --> SmartContract
-  SmartContract -- verifies ZK proof --> Verifier
-  Browser -- generates ZK proof using --> Circuits
-  SmartContract -- stores commitments, votes --> SmartContract
-  SmartContract -- provides results --> Browser
+    Deployer->>PrivateVotingContract: Deploy and Configure (Add Candidates, Set Periods)
+    
+    loop Registration Period
+        Voter->>Frontend: Connect Wallet
+        Frontend->>Wallet: Request Account Access
+        Wallet-->>Frontend: Return Address
+        Frontend->>Voter: Generate Secret & Commitment
+        Voter->>Frontend: Click "Register"
+        Frontend->>PrivateVotingContract: registerVoter(commitment)
+        PrivateVotingContract-->>Frontend: VoterRegistered Event
+    end
+
+    loop Voting Period
+        Voter->>Frontend: Select Candidate
+        Frontend->>Frontend: Generate ZK Proof (with secret, nullifier, vote)
+        Frontend->>PrivateVotingContract: castVote(proof, publicSignals)
+        PrivateVotingContract->>VerifierContract: verifyProof(proof, publicSignals)
+        VerifierContract-->>PrivateVotingContract: Return Verification Result (true/false)
+        alt Proof is Valid
+            PrivateVotingContract->>PrivateVotingContract: Record Vote, Store Nullifier
+            PrivateVotingContract-->>Frontend: VoteCast Event
+        else Proof is Invalid
+            PrivateVotingContract-->>Frontend: Revert Transaction
+        end
+    end
+
+    loop After Voting Period
+        Frontend->>PrivateVotingContract: getResults()
+        PrivateVotingContract-->>Frontend: Return Vote Counts
+        Frontend->>Voter: Display Final Results
+    end
 ```
 
-## Privacy Model
+## Deployer Steps
 
-1. **Registration Phase**: Users register with a commitment hash
-2. **Voting Phase**: ZK proofs prove eligibility without revealing identity
-3. **Tallying**: Only vote counts are public, not individual choices
+As the contract deployer, you are responsible for setting up the election securely.
+
+1.  **Circuit Setup (Powers of Tau)**:
+    *   Navigate to the `circuits` directory.
+    *   Run the `./setup.sh` script. This script compiles the Circom circuit and performs a basic setup ceremony.
+    *   **Security Warning**: For a real election, you must perform a multi-participant Powers of Tau ceremony. The included `setup.sh` is for demonstration purposes only.
+
+2.  **Configure Environment**:
+    *   Create a `.env` file in the project root.
+    *   Add your `ARBITRUM_RPC_URL` and the `PRIVATE_KEY` of the deployer account.
+
+3.  **Configure Candidates**:
+    *   Edit the `contracts/candidates.json` file. This file contains the list of candidates that will be added to the contract upon deployment.
+
+4.  **Deploy Contracts**:
+    *   Navigate to the `contracts` directory.
+    *   Run `npm run deploy`. This will:
+        *   Deploy the `VoteVerifier.sol` contract.
+        *   Deploy the `PrivateVoting.sol` contract.
+        *   Read the `candidates.json` file and add each candidate to the contract.
+        *   Set the registration and voting periods as defined in the deployment script.
+
+5.  **Update Frontend**:
+    *   After deployment, a `deployment.json` file is created in the `contracts` directory. Copy the `voting` contract address from this file.
+    *   Paste this address into the `CONTRACT_ADDRESS` constant in `frontend/simple-frontend.html`.
+    *   Copy the `vote.wasm` and `vote_0001.zkey` files from `circuits/` to `frontend/`.
 
 ## Quick Start
 
@@ -67,30 +121,9 @@ cd circuits
 ./setup.sh 
 ```
 
-### 3. Configure Environment
+### 3. Configure and Run the Frontend
 
-Create a `.env` file in the root of the project and add the following:
-
-```
-ARBITRUM_RPC_URL="YOUR_ARBITRUM_RPC_URL"
-PRIVATE_KEY="YOUR_PRIVATE_KEY"
-```
-
-### 4. Deploy Contracts
-
-```bash
-cd contracts
-npm run deploy
-```
-
-This will deploy the `PrivateVoting` and `VoteVerifier` contracts to the Arbitrum network. The deployment script will also add four candidates and set the voting periods.
-
-### 5. Configure and Run the Frontend
-
-1.  After deploying the contracts, the `contracts` directory will contain a `deployment.json` file. Copy the address of the `voting` contract from this file.
-2.  Open the `frontend/simple-frontend.html` file and replace the placeholder `CONTRACT_ADDRESS` with the address you copied.
-3.  Copy the `vote.wasm` and `vote_0001.zkey` files from the `circuits` directory to the `frontend` directory.
-4.  Serve the `frontend` directory with a simple web server:
+1.  Serve the `frontend` directory with a simple web server:
 
 ```bash
 cd frontend

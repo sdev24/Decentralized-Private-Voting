@@ -112,7 +112,7 @@
         const CONTRACT_ADDRESS = '0xAf7a5a8F4F8656754e7eadB419B7182cC0AA6De6';
         const CONTRACT_ABI = [
             "function registerVoter(uint256 _commitment) external",
-            "function castVote(uint256[2] memory _pA, uint256[2] memory _pB, uint256[2] memory _pC, uint256[2] memory _pubSignals) external",
+            "function castVote(uint256[2] memory _pA, uint256[2][2] memory _pB, uint256[2] memory _pC, uint256[2] memory _pubSignals) external",
             "function getAllCandidates() external view returns (tuple(uint256 id, string name, string description, uint256 voteCount)[])",
             "function getCandidatesWithoutVotes() external view returns (tuple(uint256 id, string name, string description, uint256 voteCount)[])",
             "function getResults() external view returns (uint256[] memory)",
@@ -308,7 +308,8 @@
                 }
 
                 // Prepare inputs for the circuit
-                const nullifier = BigInt('0x' + ethers.keccak256(new TextEncoder().encode(userSecret)).slice(2));
+                // Fix for ethers v6: use ethers.keccak256 and ethers.toUtf8Bytes
+                const nullifier = BigInt('0x' + ethers.keccak256(ethers.toUtf8Bytes(userSecret)).slice(2));
                 const vote = BigInt(selectedCandidate);
                 const commitment = BigInt(userSecret) * BigInt(userSecret); // For demo, match registration
                 const nullifierHash = nullifier * nullifier; // For demo, match circuit logic
@@ -325,30 +326,49 @@
                 const wasmUrl = "vote.wasm";
                 const zkeyUrl = "vote_0001.zkey";
 
+                console.log('Generating proof with input:', input);
+                console.log('WASM URL:', wasmUrl);
+                console.log('ZKEY URL:', zkeyUrl);
+
                 // Generate the proof and public signals
-                const { proof, publicSignals } = await snarkjs.groth16.fullProve(
-                    input,
-                    wasmUrl,
-                    zkeyUrl
-                );
+                let proof, publicSignals;
+                try {
+                    const result = await snarkjs.groth16.fullProve(input, wasmUrl, zkeyUrl);
+                    proof = result.proof;
+                    publicSignals = result.publicSignals;
+                    console.log('Proof generated successfully:', proof);
+                    console.log('Public signals:', publicSignals);
+                } catch (proofError) {
+                    console.error('Error generating proof:', proofError);
+                    throw new Error('Failed to generate zero-knowledge proof: ' + proofError.message);
+                }
 
-                // Manually construct the arguments for the contract call
-                const a = [proof.pi_a[0], proof.pi_a[1]];
-                const b = [
-                    [proof.pi_b[0][1], proof.pi_b[0][0]],
-                    [proof.pi_b[1][1], proof.pi_b[1][0]]
-                ];
-                const c = [proof.pi_c[0], proof.pi_c[1]];
-                const pubSigs = [publicSignals[0], publicSignals[1]];
-
-                // Convert all arguments to hex strings for Ethers.js
-                const toHex = (n) => '0x' + BigInt(n).toString(16);
-
-                const a_hex = a.map(toHex);
-                const b_hex = b.map(row => row.map(toHex));
-                const c_hex = c.map(toHex);
-                const pubSigs_hex = pubSigs.map(toHex);
-
+                // Format proof for contract call
+                console.log('Exporting calldata...');
+                const calldata = await snarkjs.groth16.exportSolidityCallData(proof, publicSignals);
+                console.log('Calldata:', calldata);
+                
+                const argv = JSON.parse("[" + calldata + "]");
+                console.log('Parsed argv:', argv);
+                
+                // Convert hex strings to BigInt arrays for ethers v6
+                console.log('argv[0] type:', typeof argv[0], 'length:', argv[0].length, 'content:', argv[0]);
+                console.log('argv[1] type:', typeof argv[1], 'length:', argv[1].length, 'content:', argv[1]);
+                console.log('argv[2] type:', typeof argv[2], 'length:', argv[2].length, 'content:', argv[2]);
+                console.log('argv[3] type:', typeof argv[3], 'length:', argv[3].length, 'content:', argv[3]);
+                
+                const a = argv[0].map(x => BigInt(x));
+                // Format b as uint256[2][2] - nested array structure
+                const b = argv[1].map(innerArray => innerArray.map(x => BigInt(x)));
+                const c = argv[2].map(x => BigInt(x));
+                const pubSignals = argv[3].map(x => BigInt(x));
+                
+                console.log('Formatted proof data:');
+                console.log('a:', a);
+                console.log('b:', b);
+                console.log('c:', c);
+                console.log('pubSignals:', pubSignals);
+                
                 // Check if user is registered
                 const address = await signer.getAddress();
                 const commitmentOnChain = await contract.voterCommitments(address);
@@ -362,7 +382,8 @@
                     throw new Error('Voting is not currently active');
                 }
 
-                const tx = await contract.castVote(a_hex, b_hex, c_hex, pubSigs_hex);
+                // Try calling with the full b array (4 values)
+                const tx = await contract.castVote(a, b, c, pubSignals);
                 console.log('Transaction sent:', tx.hash);
                 await tx.wait();
 
@@ -429,7 +450,7 @@
                 resultsDiv.innerHTML = '';
                 
                 // Sort candidates by vote count (descending)
-                const sortedCandidates = [...contractCandidates].sort((a, b) => 
+                const sortedCandidates = contractCandidates.sort((a, b) => 
                     Number(b.voteCount) - Number(a.voteCount)
                 );
                 
