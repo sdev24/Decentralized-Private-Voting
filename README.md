@@ -66,18 +66,6 @@ sequenceDiagram
     F-->>U: Show status/result
 ```
 
-## Frontend Hosting
-
-**The deployer should host the frontend so users can access it over the internet.**  
-The recommended way is to use [GitHub Pages](https://pages.github.com/) or any static file host (e.g., Vercel, Netlify, S3, etc).
-
-- If using GitHub Pages, place your `index.html`, `vote.wasm`, and `vote_0001.zkey` in the root or `/docs` folder.
-- Set the GitHub Pages source to `/ (root)` or `/docs` in your repository settings.
-- Your users will then be able to access the DApp at  
-  `https://<your-username>.github.io/<repo-name>/`
-
-**This ensures anyone with the link can use your DApp from anywhere in the world.**
-
 ## Deployer Steps
 
 As the contract deployer, you are responsible for setting up the election securely.
@@ -132,13 +120,20 @@ cd circuits
 
 ### 3. Configure and Run the Frontend
 
-1.  Serve the `frontend` directory with a simple web server:
+For local testing, serve the `frontend` directory with a simple web server:
 
 ```bash
 cd frontend
 python3 -m http.server 3050
 ```
+For deployment,** host the frontend so users can access it over the internet.**  
+The recommended way is to use [GitHub Pages](https://pages.github.com/) or any static file host (e.g., Vercel, Netlify, S3, etc).
 
+- If using GitHub Pages, place your `index.html`, `vote.wasm`, and `vote_0001.zkey` in the root or `/docs` folder.
+- Set the GitHub Pages source to `/ (root)` or `/docs` in your repository settings.
+- Your users will then be able to access the DApp at  
+  `https://<your-username>.github.io/<repo-name>/`
+  
 ## Usage
 
 1.  Open `http://localhost:3050/simple-frontend.html` in a browser with MetaMask installed.
