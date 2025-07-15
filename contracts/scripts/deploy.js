@@ -26,15 +26,16 @@ async function main() {
   console.log("Account balance:", hre.ethers.formatEther(balance), "ETH");
   
   // Deploy the verifier contract first
-  const VoteVerifier = await hre.ethers.getContractFactory("VoteVerifier");
-  const verifier = await VoteVerifier.connect(deployer).deploy();
-  await verifier.waitForDeployment();
+  // const VoteVerifier = await hre.ethers.getContractFactory("Groth16Verifier");
+  // const verifier = await VoteVerifier.connect(deployer).deploy();
+  // await verifier.waitForDeployment();
   
-  console.log("VoteVerifier deployed to:", await verifier.getAddress());
+  // console.log("VoteVerifier deployed to:", await verifier.getAddress());
+  const verifierAddress = "0xF023d64237264949251a12041C39f682AFC21f1a";
   
   // Deploy the main voting contract
   const PrivateVoting = await hre.ethers.getContractFactory("PrivateVoting");
-  const voting = await PrivateVoting.connect(deployer).deploy(await verifier.getAddress());
+  const voting = await PrivateVoting.connect(deployer).deploy(verifierAddress);
   await voting.waitForDeployment();
   
   console.log("PrivateVoting deployed to:", await voting.getAddress());
@@ -70,7 +71,7 @@ async function main() {
   
   // Save deployment addresses
   const deployment = {
-    verifier: await verifier.getAddress(),
+    verifier: verifierAddress,
     voting: await voting.getAddress(),
     network: hre.network.name,
     timestamp: new Date().toISOString()
